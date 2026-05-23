@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 960px;
+  background: #f7f4ee;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+@layer components {
+  .primary-button,
+  .secondary-button,
+  .danger-button,
+  .icon-button {
+    @apply inline-flex h-10 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition-colors;
+  }
+
+  .primary-button {
+    @apply border-moss bg-moss text-white hover:bg-moss/90;
+  }
+
+  .secondary-button {
+    @apply border-line bg-white text-ink hover:border-moss/50 hover:bg-paper;
+  }
+
+  .danger-button {
+    @apply border-tomato bg-tomato text-white hover:bg-tomato/90;
+  }
+
+  .icon-button {
+    @apply w-10 justify-center border-line bg-white p-0 text-ink hover:border-moss/50 hover:bg-paper;
+  }
+
+  .field {
+    @apply block space-y-1 text-sm font-semibold text-ink/70;
+  }
+
+  .field input {
+    @apply h-10 w-full rounded-md border border-line bg-white px-3 text-sm font-normal text-ink outline-none focus:border-moss;
+  }
+
+  .chat-bubble {
+    @apply max-w-[88%] rounded-md px-3 py-2 text-sm leading-6;
+  }
+}
