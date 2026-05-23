@@ -1,7 +1,7 @@
 # StudyPulse
 
 > A lightweight Windows study dashboard with Pomodoro, local activity tracking, daily reports, and AI summaries.
-
+作者使用codex vibe coding.
 StudyPulse 是一个轻量级 Windows 桌面学习辅助工具。用户点击“开始学习”后，程序会在本机记录学习会话、番茄钟状态、前台窗口、应用使用时长和键鼠活跃度，并在结束后生成本地日报。用户可以配置 OpenAI 兼容 API，让 AI 对日报进行复盘总结和追问聊天。
 
 ## 项目简介
