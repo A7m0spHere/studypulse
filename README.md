@@ -98,6 +98,6 @@ src-tauri/target/release/bundle/msi/
 建议流程：
 
 1. 日常开发使用 `git commit` 提交。
-2. 正式版本使用 Git tag，例如 `git tag v0.2.1`。
+2. 正式版本使用 Git tag，例如 `git tag v0.2.2`。
 3. 推送代码和 tag：`git push origin main --tags`。
 4. 在 GitHub Release 中上传 MSI 或 ZIP 安装包。

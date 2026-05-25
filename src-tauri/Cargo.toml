@@ -1,6 +1,6 @@
 [package]
 name = "studypulse"
-version = "0.2.1"
+version = "0.2.2"
 description = "A lightweight Windows study dashboard with Pomodoro, local activity tracking, daily reports, and AI summaries."
 authors = ["StudyPulse"]
 edition = "2021"

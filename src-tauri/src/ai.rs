@@ -21,7 +21,7 @@ pub struct AiConnectionTest {
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
-const USER_AGENT_VALUE: &str = "StudyPulse/0.2.1";
+const USER_AGENT_VALUE: &str = "StudyPulse/0.2.2";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiMessage {
