@@ -1,0 +1,89 @@
+StudyPulse 使用手册
+版本：__VERSION__
+平台：Windows 桌面端
+
+一、安装包文件说明
+
+1. StudyPulse_Setup___VERSION___x64.msi
+   StudyPulse 主程序安装包，双击后按提示安装。
+
+2. StudyPulse-Test-Code-Signing.cer
+   自签名测试证书。它只能减少测试电脑上的部分信任提示，不能完全消除 Windows SmartScreen 提示。
+
+3. StudyPulse_User_Manual_CN.txt
+   当前文件，说明安装、启动、使用和常见问题。
+
+4. StudyPulse_Changelog_CN.txt
+   当前版本的更新和修改说明。
+
+二、安装步骤
+
+1. 解压 ZIP 压缩包。
+2. 双击 StudyPulse_Setup___VERSION___x64.msi。
+3. 按安装向导完成安装。
+4. 如果 Windows 出现安全提示，可以点击“更多信息”，再选择“仍要运行”。
+
+三、可选：导入测试证书
+
+如果是给少量测试用户使用，可以先导入 StudyPulse-Test-Code-Signing.cer：
+
+1. 双击 StudyPulse-Test-Code-Signing.cer。
+2. 选择“安装证书”。
+3. 存储位置选择“当前用户”。
+4. 选择“将所有的证书都放入下列存储”。
+5. 选择“受信任的根证书颁发机构”。
+6. 完成导入后再安装 MSI。
+
+注意：自签名证书不等于正式代码签名证书，公开发布仍建议购买正式代码签名证书。
+
+四、基本使用流程
+
+1. 打开 StudyPulse。
+2. 点击“开始学习”，程序会开始记录本次学习会话。
+3. 学习过程中可使用番茄钟、查看当前应用、应用使用排行和键鼠活跃度。
+4. 点击“结束学习”，程序会生成本地日报。
+5. 在“历史日报”中可以查看最近记录，也可以删除不需要的日报记录。
+6. 如需 AI 总结，可在设置中配置 DeepSeek 或自定义 OpenAI 兼容 API。
+7. 点击“生成 AI 总结”后，可以继续在聊天框中追问本次学习情况。
+
+五、AI 配置说明
+
+StudyPulse __VERSION__ 不再提供内置公益 API。
+
+1. DeepSeek 模式：
+   Base URL 固定为 https://api.deepseek.com
+   模型可选择 deepseek-v4-pro 或 deepseek-v4-flash
+   API Key 需要用户自行填写。
+
+2. 自定义 OpenAI 兼容 API：
+   用户自行填写 Base URL、API Key 和模型名。
+   也可以点击“检测可用模型”，程序会请求 {base_url}/models 并显示可选模型。
+   如果服务商不支持 /models，仍可手动输入模型名并保存。
+
+六、隐私说明
+
+StudyPulse 默认把数据保存在本机 SQLite 数据库中。
+
+- 不记录具体按键内容
+- 不记录输入文本
+- 不保存鼠标坐标
+- 不截图、不录屏
+- 不主动上传本地采集数据
+- 只有用户主动生成 AI 总结或发送 AI 聊天消息时，才会把日报摘要发送到当前配置的 AI API
+
+七、常见问题
+
+1. 为什么安装时有安全提示？
+   当前安装包使用测试证书或未使用正式商业代码签名证书，Windows 可能仍会显示 SmartScreen 提示。
+
+2. 程序打不开怎么办？
+   请确认系统是 Windows 10/11，并已安装 Microsoft WebView2 Runtime。多数 Windows 10/11 已经自带。
+
+3. AI 总结失败怎么办？
+   请检查 API Key、Base URL、模型名、网络连接和服务商额度。建议先在设置页点击“测试 API”。
+
+4. 删除历史日报会清空今日学习时间吗？
+   不会。删除的是日报展示记录和对应聊天记录，今日学习时间仍根据本地学习会话累计。
+
+5. 如何卸载？
+   在 Windows 设置中进入“应用”，找到 StudyPulse 后选择卸载。
