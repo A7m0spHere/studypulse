@@ -143,10 +143,7 @@ fn start_platform_activity_capture(
 }
 
 #[cfg(windows)]
-fn run_keyboard_hook_loop(
-    session_id: i64,
-    stop: Arc<AtomicBool>,
-) -> Result<(), String> {
+fn run_keyboard_hook_loop(session_id: i64, stop: Arc<AtomicBool>) -> Result<(), String> {
     use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, DispatchMessageW, GetMessageW, SetWindowsHookExW, TranslateMessage, MSG,
         WH_KEYBOARD_LL,
@@ -165,7 +162,9 @@ fn run_keyboard_hook_loop(
 
     let keyboard_hook = unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook), None, 0) }
         .map_err(|error| format!("keyboard hook install failed: {error}"))?;
-    let hooks = InstalledHooks { keyboard: keyboard_hook };
+    let hooks = InstalledHooks {
+        keyboard: keyboard_hook,
+    };
 
     println!("[StudyPulse activity] keyboard hook started for session {session_id}");
     while !stop.load(Ordering::SeqCst) {

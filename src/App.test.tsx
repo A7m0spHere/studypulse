@@ -68,6 +68,9 @@ describe("App", () => {
       if (command === "get_recent_reports") {
         return Promise.resolve([]);
       }
+      if (command === "get_data_dir") return Promise.resolve("C:\\Users\\tester\\AppData\\Roaming\\StudyPulse");
+      if (command === "open_data_dir" || command === "clear_local_data") return Promise.resolve(undefined);
+      if (command === "export_daily_report") return Promise.resolve("C:\\Users\\tester\\report.md");
       return Promise.resolve({});
     });
   });
@@ -169,6 +172,7 @@ describe("App", () => {
         ]);
       }
       if (command === "delete_daily_report") return Promise.resolve(undefined);
+      if (command === "export_daily_report") return Promise.resolve("C:\\Users\\tester\\StudyPulse_Report_42.md");
       return Promise.resolve({});
     });
 
@@ -181,5 +185,42 @@ describe("App", () => {
       expect(invokeMock).toHaveBeenCalledWith("delete_daily_report", { report_id: 42 });
     });
     expect(screen.getAllByText("10:00").length).toBeGreaterThan(0);
+  });
+
+  it("exports a history report as markdown", async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "get_current_status" || command === "get_today_dashboard") return Promise.resolve(dashboard());
+      if (command === "get_app_preferences") return Promise.resolve(preferences);
+      if (command === "get_recent_reports") {
+        return Promise.resolve([
+          {
+            id: 42,
+            session_id: 7,
+            started_at: "2026-05-23T09:00:00+08:00",
+            ended_at: "2026-05-23T09:10:00+08:00",
+            total_seconds: 600,
+            focus_score: 82,
+            app_usage: [{ app_name: "Code", exe_path: null, seconds: 300 }],
+            activity: [],
+            pomodoro_completed: 1,
+            ai_summary: "今天完成了一次稳定的学习。",
+          },
+        ]);
+      }
+      if (command === "export_daily_report") return Promise.resolve("C:\\Users\\tester\\StudyPulse_Report_42.md");
+      return Promise.resolve({});
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /鍘嗗彶鏃ユ姤|历史日报/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /导出 MD/ }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith("export_daily_report", {
+        report_id: 42,
+        format: "markdown",
+      });
+    });
   });
 });

@@ -21,7 +21,7 @@ pub struct AiConnectionTest {
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
-const USER_AGENT_VALUE: &str = "StudyPulse/0.2.2";
+const USER_AGENT_VALUE: &str = "StudyPulse/0.2.3";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiMessage {
@@ -220,9 +220,7 @@ fn readable_http_error(status: StatusCode, body: &str) -> String {
         if body.is_empty() {
             return "服务端返回 403 Forbidden，可能是 Key、来源限制或网关策略导致。".into();
         }
-        return format!(
-            "服务端返回 403 Forbidden，可能是 Key、来源限制或网关策略导致: {body}"
-        );
+        return format!("服务端返回 403 Forbidden，可能是 Key、来源限制或网关策略导致: {body}");
     }
 
     if status == StatusCode::UNAUTHORIZED {

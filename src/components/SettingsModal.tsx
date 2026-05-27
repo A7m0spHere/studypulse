@@ -1,4 +1,4 @@
-import { CheckCircle2, Loader2, Search, X, XCircle } from "lucide-react";
+import { CheckCircle2, FolderOpen, Loader2, Search, Trash2, X, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import type {
@@ -14,6 +14,7 @@ interface SettingsModalProps {
   onShowPrivacy: () => void;
   preferences: AppPreferences;
   onSavePreferences: (preferences: AppPreferences) => Promise<void>;
+  onDataCleared?: () => void;
 }
 
 type AiProvider = AiSettingsInput["provider"];
@@ -42,6 +43,7 @@ export function SettingsModal({
   onShowPrivacy,
   preferences,
   onSavePreferences,
+  onDataCleared,
 }: SettingsModalProps) {
   const [activeProvider, setActiveProvider] = useState<AiProvider>("deepseek");
   const [forms, setForms] = useState<AiForms>(cloneDefaultForms());
@@ -51,12 +53,15 @@ export function SettingsModal({
   const [testing, setTesting] = useState(false);
   const [detectingModels, setDetectingModels] = useState(false);
   const [customModels, setCustomModels] = useState<string[]>([]);
+  const [dataDir, setDataDir] = useState("");
+  const [clearingData, setClearingData] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setMessage("");
     setTestMessage("");
     setCustomModels([]);
+    api.getDataDir().then(setDataDir).catch(() => setDataDir(""));
     api
       .getAiSettingsMasked()
       .then((value) => {
@@ -154,6 +159,31 @@ export function SettingsModal({
         ? "已关闭键鼠活跃度统计。下次开始学习时生效。"
         : "已开启键鼠活跃度统计。下次开始学习时生效。",
     );
+  }
+
+  async function openDataDir() {
+    setMessage("");
+    try {
+      await api.openDataDir();
+    } catch (error) {
+      setMessage(String(error));
+    }
+  }
+
+  async function clearLocalData() {
+    if (!window.confirm("确定清空本地学习数据吗？AI 设置和隐私确认状态会保留。")) return;
+    if (!window.confirm("再次确认：该操作会删除学习会话、窗口采样、应用排行、活跃度、番茄钟事件、日报和聊天记录。")) return;
+    setClearingData(true);
+    setMessage("");
+    try {
+      await api.clearLocalData();
+      setMessage("本地学习数据已清空，AI 设置和隐私确认状态已保留。");
+      onDataCleared?.();
+    } catch (error) {
+      setMessage(String(error));
+    } finally {
+      setClearingData(false);
+    }
   }
 
   const deepseek = activeProvider === "deepseek";
@@ -277,6 +307,33 @@ export function SettingsModal({
             <button className="mt-2 text-sm font-semibold text-moss" onClick={onShowPrivacy}>
               查看完整隐私说明
             </button>
+          </div>
+
+          <div className="rounded-md border border-line bg-white/70 p-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-ink">本地数据</p>
+              <p className="mt-1 break-all text-xs leading-5 text-ink/60">
+                {dataDir || "正在读取数据目录..."}
+              </p>
+              <p className="mt-2 text-xs leading-5 text-ink/55">
+                清空本地学习数据会删除会话、窗口采样、应用排行、活跃度、番茄钟事件、日报和聊天记录；AI 设置与隐私确认状态会保留。
+              </p>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button className="secondary-button" type="button" onClick={openDataDir}>
+                <FolderOpen size={16} />
+                打开数据目录
+              </button>
+              <button
+                className="danger-button"
+                type="button"
+                onClick={clearLocalData}
+                disabled={clearingData}
+              >
+                {clearingData ? <Loader2 className="animate-spin" size={16} /> : <Trash2 size={16} />}
+                清空本地数据
+              </button>
+            </div>
           </div>
 
           {message ? <p className="text-sm text-moss">{message}</p> : null}

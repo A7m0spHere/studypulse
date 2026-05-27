@@ -5,7 +5,9 @@ mod db;
 mod pomodoro;
 
 use std::{
+    fs,
     path::PathBuf,
+    process::Command,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex, MutexGuard,
@@ -28,6 +30,7 @@ type AppResult<T> = Result<T, String>;
 
 struct AppState {
     db: Arc<Mutex<Database>>,
+    data_dir: PathBuf,
     active_session_id: Mutex<Option<i64>>,
     pomodoro: Arc<Mutex<PomodoroMachine>>,
     sampler: Mutex<Option<SamplerHandle>>,
@@ -300,10 +303,16 @@ async fn test_ai_connection(
             ok: true,
             message: match (result.model_count, result.chat_ok) {
                 (Some(count), true) => {
-                    format!("API 可用，检测到 {count} 个模型，当前模型 {} 可正常响应。", resolved.model)
+                    format!(
+                        "API 可用，检测到 {count} 个模型，当前模型 {} 可正常响应。",
+                        resolved.model
+                    )
                 }
                 (None, true) => {
-                    format!("API 可用，当前模型 {} 可正常响应；该服务未返回模型列表。", resolved.model)
+                    format!(
+                        "API 可用，当前模型 {} 可正常响应；该服务未返回模型列表。",
+                        resolved.model
+                    )
                 }
                 _ => "API 连接异常，请稍后重试。".into(),
             },
@@ -389,6 +398,60 @@ fn delete_daily_report(report_id: i64, state: State<AppState>) -> AppResult<()> 
     db(&state)?
         .delete_daily_report(report_id)
         .map_err(to_string)
+}
+
+#[tauri::command]
+fn get_data_dir(state: State<AppState>) -> String {
+    state.data_dir.to_string_lossy().to_string()
+}
+
+#[tauri::command]
+fn open_data_dir(state: State<AppState>) -> AppResult<()> {
+    fs::create_dir_all(&state.data_dir).map_err(to_string)?;
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("explorer")
+            .arg(&state.data_dir)
+            .spawn()
+            .map_err(|error| format!("打开数据目录失败: {error}"))?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("当前版本仅支持在 Windows 上打开数据目录。".into())
+    }
+}
+
+#[tauri::command]
+fn clear_local_data(state: State<AppState>) -> AppResult<()> {
+    if current_session_id(&state)?.is_some() {
+        return Err("请先结束当前学习会话，再清空本地学习数据。".into());
+    }
+    stop_sampler(&state);
+    stop_activity(&state);
+    db(&state)?.clear_local_data().map_err(to_string)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+fn export_daily_report(
+    report_id: i64,
+    format: String,
+    state: State<AppState>,
+) -> AppResult<String> {
+    let report = db(&state)?
+        .get_report_context(report_id)
+        .map_err(to_string)?;
+    let extension = match format.as_str() {
+        "txt" => "txt",
+        "markdown" | "md" => "md",
+        _ => return Err("导出格式只支持 txt 或 markdown。".into()),
+    };
+    let export_dir = state.data_dir.join("exports");
+    fs::create_dir_all(&export_dir).map_err(to_string)?;
+    let file_path = export_dir.join(format!("StudyPulse_Report_{}.{}", report.id, extension));
+    let content = render_report_export(&report, extension == "md")?;
+    fs::write(&file_path, content).map_err(to_string)?;
+    Ok(file_path.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -571,6 +634,103 @@ fn report_for_session(
     }
 }
 
+fn render_report_export(report: &ReportContext, markdown: bool) -> AppResult<String> {
+    let app_usage: Vec<AppUsage> = serde_json::from_str(&report.app_usage_json).unwrap_or_default();
+    let activity: Vec<ActivityPoint> =
+        serde_json::from_str(&report.activity_json).unwrap_or_default();
+    let mut lines = Vec::new();
+
+    if markdown {
+        lines.push(format!("# StudyPulse 日报 #{}", report.id));
+        lines.push(String::new());
+        lines.push(format!("- 会话 ID：{}", report.session_id));
+        lines.push(format!("- 开始时间：{}", report.started_at));
+        lines.push(format!("- 结束时间：{}", report.ended_at));
+        lines.push(format!(
+            "- 学习时长：{}",
+            human_seconds(report.total_seconds)
+        ));
+        lines.push(format!("- 专注度：{}", report.focus_score));
+        lines.push(format!("- 番茄钟完成数：{}", report.pomodoro_completed));
+        lines.push(String::new());
+        lines.push("## 应用排行".into());
+        if app_usage.is_empty() {
+            lines.push("- 暂无应用采样数据。".into());
+        } else {
+            for item in app_usage.iter().take(10) {
+                lines.push(format!(
+                    "- {}：{}",
+                    item.app_name,
+                    human_seconds(item.seconds)
+                ));
+            }
+        }
+        lines.push(String::new());
+        lines.push("## 活跃度".into());
+        if activity.is_empty() {
+            lines.push("- 暂无键鼠活跃度趋势。".into());
+        } else {
+            for item in activity.iter().take(20) {
+                lines.push(format!(
+                    "- {}：键盘 {}，鼠标 {}",
+                    item.label, item.keyboard, item.mouse
+                ));
+            }
+        }
+        lines.push(String::new());
+        lines.push("## AI 总结".into());
+        lines.push(
+            report
+                .ai_summary
+                .clone()
+                .unwrap_or_else(|| "尚未生成 AI 总结。".into()),
+        );
+    } else {
+        lines.push(format!("StudyPulse 日报 #{}", report.id));
+        lines.push(format!("会话 ID：{}", report.session_id));
+        lines.push(format!("开始时间：{}", report.started_at));
+        lines.push(format!("结束时间：{}", report.ended_at));
+        lines.push(format!("学习时长：{}", human_seconds(report.total_seconds)));
+        lines.push(format!("专注度：{}", report.focus_score));
+        lines.push(format!("番茄钟完成数：{}", report.pomodoro_completed));
+        lines.push(String::new());
+        lines.push("应用排行：".into());
+        if app_usage.is_empty() {
+            lines.push("暂无应用采样数据。".into());
+        } else {
+            for item in app_usage.iter().take(10) {
+                lines.push(format!(
+                    "{} - {}",
+                    item.app_name,
+                    human_seconds(item.seconds)
+                ));
+            }
+        }
+        lines.push(String::new());
+        lines.push("活跃度：".into());
+        if activity.is_empty() {
+            lines.push("暂无键鼠活跃度趋势。".into());
+        } else {
+            for item in activity.iter().take(20) {
+                lines.push(format!(
+                    "{} - 键盘 {}，鼠标 {}",
+                    item.label, item.keyboard, item.mouse
+                ));
+            }
+        }
+        lines.push(String::new());
+        lines.push("AI 总结：".into());
+        lines.push(
+            report
+                .ai_summary
+                .clone()
+                .unwrap_or_else(|| "尚未生成 AI 总结。".into()),
+        );
+    }
+
+    Ok(lines.join("\n"))
+}
+
 fn db<'a>(state: &'a State<'_, AppState>) -> AppResult<MutexGuard<'a, Database>> {
     state.db.lock().map_err(|_| "database lock failed".into())
 }
@@ -702,10 +862,7 @@ fn hydrate_saved_ai_key_if_needed(
         .providers
         .iter()
         .find(|item| item.provider == provider);
-    if !provider_state
-        .map(|item| item.configured)
-        .unwrap_or(false)
-    {
+    if !provider_state.map(|item| item.configured).unwrap_or(false) {
         return Ok(settings);
     }
 
@@ -734,12 +891,18 @@ fn resolve_ai_settings(settings: &AiSettingsInput) -> AppResult<AiSettings> {
 fn resolve_ai_settings_for_models(settings: &AiSettingsInput) -> AppResult<AiSettings> {
     let provider = normalize_ai_provider(settings.provider.as_deref());
     let (base_url, api_key) = match provider {
-        "deepseek" => ("https://api.deepseek.com".to_string(), settings.api_key.trim().to_string()),
+        "deepseek" => (
+            "https://api.deepseek.com".to_string(),
+            settings.api_key.trim().to_string(),
+        ),
         "custom" => {
             if settings.base_url.trim().is_empty() {
                 return Err("请填写自定义 API Base URL。".into());
             }
-            (settings.base_url.trim().to_string(), settings.api_key.trim().to_string())
+            (
+                settings.base_url.trim().to_string(),
+                settings.api_key.trim().to_string(),
+            )
         }
         _ => return Err("未知的 API 供应商。".into()),
     };
@@ -785,8 +948,9 @@ fn chat_messages_clean(report: &ReportContext, history: &[ChatMessage]) -> Vec<A
     let mut messages = vec![
         AiMessage {
             role: "system".into(),
-            content: "你是 StudyPulse 的学习复盘聊天助手。请基于日报上下文回答，保持简短、具体、友好。"
-                .into(),
+            content:
+                "你是 StudyPulse 的学习复盘聊天助手。请基于日报上下文回答，保持简短、具体、友好。"
+                    .into(),
         },
         AiMessage {
             role: "user".into(),
@@ -875,8 +1039,9 @@ fn chat_messages(report: &ReportContext, history: &[ChatMessage]) -> Vec<AiMessa
     let mut messages = vec![
         AiMessage {
             role: "system".into(),
-            content: "你是 StudyPulse 的学习复盘聊天助手。请基于日报上下文回答，保持简短、具体、友好。"
-                .into(),
+            content:
+                "你是 StudyPulse 的学习复盘聊天助手。请基于日报上下文回答，保持简短、具体、友好。"
+                    .into(),
         },
         AiMessage {
             role: "user".into(),
@@ -1097,10 +1262,10 @@ fn spawn_pomodoro_timer(
     });
 }
 
-fn app_data_path(handle: &tauri::AppHandle) -> Result<PathBuf, Box<dyn std::error::Error>> {
+fn app_data_dir(handle: &tauri::AppHandle) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let dir = handle.path().app_data_dir()?;
     std::fs::create_dir_all(&dir)?;
-    Ok(dir.join("studypulse.sqlite3"))
+    Ok(dir)
 }
 
 fn to_string(error: impl std::fmt::Display) -> String {
@@ -1114,11 +1279,13 @@ fn now() -> String {
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
-            let db_path = app_data_path(app.handle())?;
+            let data_dir = app_data_dir(app.handle())?;
+            let db_path = data_dir.join("studypulse.sqlite3");
             let database = Database::open(&db_path)?;
             database.close_stale_studying_sessions()?;
             app.manage(AppState {
                 db: Arc::new(Mutex::new(database)),
+                data_dir,
                 active_session_id: Mutex::new(None),
                 pomodoro: Arc::new(Mutex::new(PomodoroMachine::new())),
                 sampler: Mutex::new(None),
@@ -1142,6 +1309,10 @@ fn main() {
             chat_with_ai,
             get_recent_reports,
             delete_daily_report,
+            get_data_dir,
+            open_data_dir,
+            clear_local_data,
+            export_daily_report,
             get_app_preferences,
             save_app_preferences
         ])
@@ -1206,6 +1377,28 @@ mod tests {
         assert!(prompt.contains("Code"));
         assert!(prompt.contains("focus_score: 86"));
         assert!(prompt.contains("轻微吐槽"));
+    }
+
+    #[test]
+    fn renders_daily_report_markdown_export() {
+        let report = ReportContext {
+            id: 7,
+            session_id: 3,
+            started_at: "2026-05-22T08:00:00+00:00".into(),
+            ended_at: "2026-05-22T08:30:00+00:00".into(),
+            total_seconds: 1800,
+            focus_score: 86,
+            app_usage_json: r#"[{"app_name":"Code","seconds":1200}]"#.into(),
+            activity_json: r#"[{"label":"08:05","keyboard":12,"mouse":3}]"#.into(),
+            pomodoro_completed: 1,
+            ai_summary: Some("状态不错，继续保持。".into()),
+        };
+
+        let content = render_report_export(&report, true).expect("report should render");
+
+        assert!(content.contains("# StudyPulse 日报 #7"));
+        assert!(content.contains("Code"));
+        assert!(content.contains("状态不错"));
     }
 
     #[test]

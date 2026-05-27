@@ -27,7 +27,14 @@ import {
 import { SettingsModal } from "./components/SettingsModal";
 import { StatCard } from "./components/StatCard";
 import { api, formatDuration } from "./lib/api";
-import type { AiSummaryTone, AppPreferences, ChatMessage, DailyReport, DashboardState } from "./lib/types";
+import type {
+  AiSummaryTone,
+  AppPreferences,
+  ChatMessage,
+  DailyReport,
+  DashboardState,
+  ExportFormat,
+} from "./lib/types";
 
 const defaultPreferences: AppPreferences = {
   privacy_notice_accepted: false,
@@ -66,6 +73,40 @@ function formatDateTime(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+}
+
+function formatDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+  }).format(date);
+}
+
+function formatTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function groupReportsByDate(reports: DailyReport[]) {
+  const groups = new Map<string, DailyReport[]>();
+  for (const report of reports) {
+    const key = formatDate(report.ended_at || report.started_at);
+    groups.set(key, [...(groups.get(key) ?? []), report]);
+  }
+  return Array.from(groups.entries());
+}
+
+function summaryExcerpt(summary: string) {
+  const compact = summary.replace(/\s+/g, " ").trim();
+  return compact.length > 120 ? `${compact.slice(0, 120)}...` : compact;
 }
 
 export default function App() {
@@ -192,6 +233,14 @@ export default function App() {
         setLastReport(null);
         setMessages([]);
       }
+      loadReports();
+    });
+  }
+
+  async function exportReport(reportIdToExport: number, format: ExportFormat) {
+    await runAction(() => api.exportDailyReport(reportIdToExport, format), (path) => {
+      setError(`日报已导出：${path}`);
+      window.setTimeout(() => setError(""), 4500);
     });
   }
 
@@ -451,6 +500,7 @@ export default function App() {
           onClose={() => setHistoryOpen(false)}
           onRefresh={loadReports}
           onDelete={deleteReport}
+          onExport={exportReport}
         />
       ) : null}
       {privacyOpen ? (
@@ -467,6 +517,12 @@ export default function App() {
         onShowPrivacy={() => setPrivacyOpen(true)}
         preferences={preferences}
         onSavePreferences={savePreferences}
+        onDataCleared={() => {
+          setLastReport(null);
+          setMessages([]);
+          loadReports();
+          refresh();
+        }}
       />
     </main>
   );
@@ -477,19 +533,23 @@ function HistoryDialog({
   onClose,
   onRefresh,
   onDelete,
+  onExport,
 }: {
   reports: DailyReport[];
   onClose: () => void;
   onRefresh: () => void;
   onDelete: (reportId: number) => void;
+  onExport: (reportId: number, format: ExportFormat) => void;
 }) {
+  const grouped = groupReportsByDate(reports);
+
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-ink/30 p-6">
       <section className="max-h-[82vh] w-full max-w-3xl overflow-hidden rounded-lg border border-line bg-paper shadow-panel">
         <header className="flex items-center justify-between border-b border-line px-5 py-4">
           <div>
             <h2 className="text-lg font-semibold">历史日报</h2>
-            <p className="text-sm text-ink/60">最近 30 条本地学习记录</p>
+            <p className="text-sm text-ink/60">按日期归档最近 30 条本地学习记录</p>
           </div>
           <div className="flex gap-2">
             <button className="secondary-button" onClick={onRefresh}>
@@ -501,41 +561,62 @@ function HistoryDialog({
           </div>
         </header>
         <div className="max-h-[64vh] space-y-3 overflow-auto p-5">
-          {reports.length ? (
-            reports.map((report) => (
-              <article className="rounded-lg border border-line bg-white p-4" key={report.id}>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h3 className="font-semibold">日报 #{report.id}</h3>
-                    <p className="text-sm text-ink/60">
-                      {formatDateTime(report.started_at)} - {formatDateTime(report.ended_at)}
+          {grouped.length ? (
+            grouped.map(([dateLabel, items]) => (
+              <section className="space-y-3" key={dateLabel}>
+                <h3 className="text-sm font-semibold text-ink/70">{dateLabel}</h3>
+                {items.map((report) => (
+                  <article className="rounded-lg border border-line bg-white p-4" key={report.id}>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h4 className="font-semibold">日报 #{report.id}</h4>
+                        <p className="text-sm text-ink/60">
+                          {formatTime(report.started_at)} - {formatTime(report.ended_at)}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        <span className="rounded-md bg-paper px-2 py-1">学习 {formatDuration(report.total_seconds)}</span>
+                        <span className="rounded-md bg-paper px-2 py-1">专注 {report.focus_score}</span>
+                        <span className="rounded-md bg-paper px-2 py-1">番茄 {report.pomodoro_completed}</span>
+                        <button
+                          className="secondary-button px-2 py-1 text-xs"
+                          onClick={() => onExport(report.id, "markdown")}
+                          type="button"
+                        >
+                          导出 MD
+                        </button>
+                        <button
+                          className="secondary-button px-2 py-1 text-xs"
+                          onClick={() => onExport(report.id, "txt")}
+                          type="button"
+                        >
+                          导出 TXT
+                        </button>
+                        <button
+                          className="danger-button px-2 py-1 text-xs"
+                          onClick={() => onDelete(report.id)}
+                          type="button"
+                        >
+                          <Trash2 size={14} />
+                          删除
+                        </button>
+                      </div>
+                    </div>
+                    <p className="mt-3 text-sm text-ink/70">
+                      Top 应用：
+                      {report.app_usage.length
+                        ? report.app_usage
+                            .slice(0, 3)
+                            .map((item) => `${item.app_name} ${formatDuration(item.seconds)}`)
+                            .join("、")
+                        : "暂无采样数据"}
                     </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <span className="rounded-md bg-paper px-2 py-1">学习 {formatDuration(report.total_seconds)}</span>
-                    <span className="rounded-md bg-paper px-2 py-1">专注 {report.focus_score}</span>
-                    <span className="rounded-md bg-paper px-2 py-1">番茄 {report.pomodoro_completed}</span>
-                    <button
-                      className="danger-button px-2 py-1 text-xs"
-                      onClick={() => onDelete(report.id)}
-                      type="button"
-                    >
-                      <Trash2 size={14} />
-                      删除
-                    </button>
-                  </div>
-                </div>
-                <p className="mt-3 text-sm text-ink/70">
-                  应用排行：
-                  {report.app_usage.length
-                    ? report.app_usage
-                        .slice(0, 3)
-                        .map((item) => `${item.app_name} ${formatDuration(item.seconds)}`)
-                        .join("、")
-                    : "暂无采样数据"}
-                </p>
-                {report.ai_summary ? <p className="mt-2 text-sm leading-6 text-ink/75">{report.ai_summary}</p> : null}
-              </article>
+                    <p className="mt-2 text-sm leading-6 text-ink/75">
+                      {report.ai_summary ? summaryExcerpt(report.ai_summary) : "尚未生成 AI 总结。"}
+                    </p>
+                  </article>
+                ))}
+              </section>
             ))
           ) : (
             <p className="rounded-md border border-line bg-white p-4 text-sm text-ink/60">

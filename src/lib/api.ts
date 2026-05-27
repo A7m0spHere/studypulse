@@ -6,6 +6,7 @@ import type {
   AiModelList,
   AppPreferences,
   AiSummaryTone,
+  ExportFormat,
   ChatMessage,
   DailyReport,
   DashboardState,
@@ -66,6 +67,11 @@ export const api = {
     call<ChatMessage>("chat_with_ai", { report_id: reportId, message }),
   getRecentReports: (limit = 30) => call<DailyReport[]>("get_recent_reports", { limit }),
   deleteDailyReport: (reportId: number) => call<void>("delete_daily_report", { report_id: reportId }),
+  exportDailyReport: (reportId: number, format: ExportFormat) =>
+    call<string>("export_daily_report", { report_id: reportId, format }),
+  getDataDir: () => call<string>("get_data_dir"),
+  openDataDir: () => call<void>("open_data_dir"),
+  clearLocalData: () => call<void>("clear_local_data"),
   getAppPreferences: () => call<AppPreferences>("get_app_preferences"),
   saveAppPreferences: (preferences: AppPreferences) =>
     call<AppPreferences>("save_app_preferences", { preferences }),

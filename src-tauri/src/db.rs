@@ -4,10 +4,9 @@ use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::{
-    ai::AiSettings,
-    collector::WindowSample,
-    ActivityPoint, AiProviderSettingsMasked, AiSettingsInput, AiSettingsMasked, AppPreferences,
-    AppUsage, ChatMessage, DailyReport, ReportContext, Session,
+    ai::AiSettings, collector::WindowSample, ActivityPoint, AiProviderSettingsMasked,
+    AiSettingsInput, AiSettingsMasked, AppPreferences, AppUsage, ChatMessage, DailyReport,
+    ReportContext, Session,
 };
 
 pub struct Database {
@@ -135,7 +134,9 @@ impl Database {
             .optional()?;
         if table_sql
             .as_deref()
-            .map(|sql| sql.contains("PRIMARY KEY(provider)") || sql.contains("PRIMARY KEY (provider)"))
+            .map(|sql| {
+                sql.contains("PRIMARY KEY(provider)") || sql.contains("PRIMARY KEY (provider)")
+            })
             .unwrap_or(false)
         {
             return Ok(());
@@ -475,6 +476,21 @@ impl Database {
         self.conn.execute(
             "DELETE FROM daily_reports WHERE id = ?1",
             params![report_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn clear_local_data(&self) -> rusqlite::Result<()> {
+        self.conn.execute_batch(
+            "
+            DELETE FROM chat_messages;
+            DELETE FROM daily_reports;
+            DELETE FROM app_usage;
+            DELETE FROM window_samples;
+            DELETE FROM activity_events;
+            DELETE FROM pomodoro_events;
+            DELETE FROM sessions;
+            ",
         )?;
         Ok(())
     }
@@ -829,7 +845,11 @@ impl Database {
     ) -> rusqlite::Result<()> {
         self.set_preference_value(
             "privacy_notice_accepted",
-            if privacy_notice_accepted { "true" } else { "false" },
+            if privacy_notice_accepted {
+                "true"
+            } else {
+                "false"
+            },
         )?;
         self.set_preference_value(
             "default_pomodoro_minutes",
@@ -1008,7 +1028,10 @@ mod tests {
 
         assert_eq!(masked.active_provider, "deepseek");
         assert_eq!(masked.providers.len(), 2);
-        assert!(masked.providers.iter().all(|item| item.provider != "builtin"));
+        assert!(masked
+            .providers
+            .iter()
+            .all(|item| item.provider != "builtin"));
         let deepseek = masked_provider(&masked, "deepseek");
         assert_eq!(deepseek.base_url, "https://api.deepseek.com");
         assert_eq!(deepseek.model, "deepseek-v4-pro");
@@ -1032,7 +1055,10 @@ mod tests {
             .expect("masked settings should load");
 
         assert_eq!(masked.active_provider, "deepseek");
-        assert!(masked.providers.iter().all(|item| item.provider != "builtin"));
+        assert!(masked
+            .providers
+            .iter()
+            .all(|item| item.provider != "builtin"));
     }
 
     #[test]
@@ -1057,7 +1083,10 @@ mod tests {
         assert_eq!(deepseek.model, "deepseek-v4-flash");
         assert_eq!(
             deepseek.available_models,
-            vec!["deepseek-v4-pro".to_string(), "deepseek-v4-flash".to_string()]
+            vec![
+                "deepseek-v4-pro".to_string(),
+                "deepseek-v4-flash".to_string()
+            ]
         );
         assert!(!deepseek.base_url_editable);
         assert!(deepseek.api_key_required);
@@ -1481,6 +1510,72 @@ mod tests {
                 .expect("today seconds should load"),
             600
         );
+    }
+
+    #[test]
+    fn clearing_local_data_keeps_ai_settings_and_preferences() {
+        let database = Database::memory().expect("database should initialize");
+        let session = database
+            .add_session_with_times(
+                "2026-05-22T08:00:00+00:00",
+                Some("2026-05-22T08:10:00+00:00"),
+                "ended",
+            )
+            .expect("session should save");
+        let report_id = database
+            .create_daily_report(&session, 600, 80, "[]", "[]", 0, Some("summary"))
+            .expect("report should save");
+        database
+            .add_chat_message(report_id, "user", "hello")
+            .expect("chat should save");
+        database
+            .add_activity_event(session.id, "keyboard", 3)
+            .expect("activity should save");
+        database
+            .add_pomodoro_event("completed")
+            .expect("pomodoro event should save");
+        database
+            .save_ai_settings(&AiSettingsInput {
+                provider: Some("custom".into()),
+                base_url: "https://api.example.test/v1".into(),
+                api_key: "sk-test-secret-5678".into(),
+                model: "demo-model".into(),
+            })
+            .expect("settings should save");
+        database
+            .save_app_preferences(true, 40, "gentle", false)
+            .expect("preferences should save");
+
+        database.clear_local_data().expect("data should clear");
+
+        let now = DateTime::parse_from_rfc3339("2026-05-22T12:00:00+00:00")
+            .expect("date should parse")
+            .with_timezone(&Utc);
+        let settings = database
+            .get_ai_settings_for_provider("custom")
+            .expect("settings query should work")
+            .expect("custom settings should remain");
+        let preferences = database
+            .get_app_preferences()
+            .expect("preferences should remain");
+
+        assert_eq!(database.report_count().expect("count should load"), 0);
+        assert_eq!(
+            database
+                .chat_message_count_for_report(report_id)
+                .expect("chat count should load"),
+            0
+        );
+        assert_eq!(
+            database
+                .today_study_seconds(now)
+                .expect("today seconds should load"),
+            0
+        );
+        assert_eq!(settings.api_key, "sk-test-secret-5678");
+        assert!(preferences.privacy_notice_accepted);
+        assert_eq!(preferences.default_pomodoro_minutes, 40);
+        assert!(!preferences.activity_capture_enabled);
     }
 
     #[test]

@@ -98,6 +98,8 @@ export interface AiModelList {
   message: string;
 }
 
+export type ExportFormat = "txt" | "markdown";
+
 export interface ChatMessage {
   id: number;
   report_id: number;

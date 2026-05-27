@@ -11,6 +11,9 @@ const apiMock = vi.hoisted(() => ({
   saveAiSettings: vi.fn(),
   testAiConnection: vi.fn(),
   listAiModels: vi.fn(),
+  getDataDir: vi.fn(),
+  openDataDir: vi.fn(),
+  clearLocalData: vi.fn(),
 }));
 
 vi.mock("../lib/api", () => ({
@@ -32,6 +35,7 @@ function renderModal() {
       onShowPrivacy={vi.fn()}
       preferences={preferences}
       onSavePreferences={vi.fn()}
+      onDataCleared={vi.fn()}
     />,
   );
 }
@@ -74,6 +78,9 @@ describe("SettingsModal", () => {
       models: ["demo-model-a", "demo-model-b"],
       message: "检测到 2 个可用模型。",
     });
+    apiMock.getDataDir.mockResolvedValue("C:\\Users\\tester\\AppData\\Roaming\\StudyPulse");
+    apiMock.openDataDir.mockResolvedValue(undefined);
+    apiMock.clearLocalData.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -162,5 +169,16 @@ describe("SettingsModal", () => {
 
     expect(await screen.findByPlaceholderText("例如 https://api.example.com/v1")).not.toBeDisabled();
     expect(screen.getByPlaceholderText("可先检测模型，也可以手动输入")).not.toBeDisabled();
+  });
+  it("shows local data tools and clears data after double confirmation", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderModal();
+
+    expect(await screen.findByText("本地数据")).toBeInTheDocument();
+    expect(await screen.findByText("C:\\Users\\tester\\AppData\\Roaming\\StudyPulse")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /清空本地数据/ }));
+
+    await waitFor(() => expect(apiMock.clearLocalData).toHaveBeenCalledTimes(1));
   });
 });
